@@ -1,0 +1,75 @@
+---
+- name: Configure and deploy University Student Portal
+  hosts: app_servers
+  become: true
+
+  vars:
+    app_directory: /opt/student-portal
+    docker_image: student-portal:1.0
+    app_port: 8080
+
+  tasks:
+    - name: Download Docker repository configuration
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/rhel/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        mode: '0644'
+
+    - name: Install container SELinux policies
+      ansible.builtin.dnf:
+        name: container-selinux
+        state: present
+
+    - name: Install Docker and Compose plugin
+      ansible.builtin.dnf:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_directory }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy application files to App Server
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ app_directory }}/"
+      loop:
+        - ../Dockerfile
+        - ../compose.yml
+        - ../app
+
+    - name: Build application Docker image
+      community.docker.docker_image:
+        name: "{{ docker_image }}"
+        source: build
+        build:
+          path: "{{ app_directory }}"
+        state: present
+
+    - name: Start application with Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ app_directory }}"
+        state: present
+
+    - name: Wait for application health endpoint
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_port }}/health"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 10
+      delay: 5
+      until: health_check.status == 200
