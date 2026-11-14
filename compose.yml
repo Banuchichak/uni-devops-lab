@@ -1,0 +1,19 @@
+services:
+  web:
+    image: student-portal:1.0
+    container_name: student-portal
+    ports:
+      - "8080:5000"
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7
+    container_name: student-redis
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
